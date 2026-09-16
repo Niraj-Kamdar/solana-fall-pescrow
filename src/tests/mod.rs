@@ -452,4 +452,92 @@ mod tests {
             maker_lamports_before + vault_lamports_before + escrow_lamports_before - TX_FEE
         );
     }
+
+    #[test]
+    pub fn test_invalid_escrow_take_rejected() {
+        let (mut svm, maker, taker) = setup();
+
+        let mint_a = setup_mint(&mut svm, &maker, 6);
+        let mint_b = setup_mint(&mut svm, &maker, 6);
+
+        let (escrow, _bump) = setup_make(&mut svm, mint_a, mint_b, &maker);
+        mint_b_to_taker_ata(&mut svm, mint_b, &taker, &maker);
+
+        let vault = get_ata(&escrow, &mint_a);
+        let taker_ata_a = get_ata(&taker.pubkey(), &mint_a);
+        let taker_ata_b = get_ata(&taker.pubkey(), &mint_b);
+        let maker_ata_b = get_ata(&maker.pubkey(), &mint_b);
+
+        let associated_token_program = ASSOCIATED_TOKEN_PROGRAM_ID.parse::<Pubkey>().unwrap();
+        let token_program = TOKEN_PROGRAM_ID;
+        let system_program = solana_sdk_ids::system_program::ID;
+
+        // mint_b is owned by the token program, not the escrow program, so passing it
+        // in place of the escrow account should trip the owner check.
+        let take_ix = Instruction {
+            program_id: program_id(),
+            accounts: vec![
+                AccountMeta::new(taker.pubkey(), true),
+                AccountMeta::new(maker.pubkey(), false),
+                AccountMeta::new(mint_a, false),
+                AccountMeta::new(mint_b, false),
+                AccountMeta::new(mint_b, false),
+                AccountMeta::new(vault, false),
+                AccountMeta::new(taker_ata_a, false),
+                AccountMeta::new(taker_ata_b, false),
+                AccountMeta::new(maker_ata_b, false),
+                AccountMeta::new(system_program, false),
+                AccountMeta::new(token_program, false),
+                AccountMeta::new(associated_token_program, false),
+            ],
+            data: vec![1u8],
+        };
+
+        let message = Message::new(&[take_ix], Some(&taker.pubkey()));
+        let recent_blockhash = svm.latest_blockhash();
+        let transaction = Transaction::new(&[&taker], message, recent_blockhash);
+
+        let err = svm.send_transaction(transaction).unwrap_err();
+        println!("{:?}", err);
+        let err_str = format!("{:?}", err);
+        assert!(err_str.contains("IllegalOwner"), "{}", err_str);
+    }
+
+    #[test]
+    pub fn test_invalid_mint_cancel_rejected() {
+        let (mut svm, maker, ..) = setup();
+
+        let mint_a = setup_mint(&mut svm, &maker, 6);
+        let mint_b = setup_mint(&mut svm, &maker, 6);
+
+        let (escrow, _bump) = setup_make(&mut svm, mint_a, mint_b, &maker);
+
+        let vault = get_ata(&escrow, &mint_a);
+        let maker_ata_a = get_ata(&maker.pubkey(), &mint_a);
+        let token_program = TOKEN_PROGRAM_ID;
+
+        // mint_b is owned by the token program, not the escrow program, so passing it
+        // in place of the escrow account should trip the owner check.
+        let cancel_ix = Instruction {
+            program_id: program_id(),
+            accounts: vec![
+                AccountMeta::new(maker.pubkey(), true),
+                AccountMeta::new(mint_a, false),
+                AccountMeta::new(mint_b, false),
+                AccountMeta::new(vault, false),
+                AccountMeta::new(maker_ata_a, false),
+                AccountMeta::new(token_program, false),
+            ],
+            data: vec![2u8],
+        };
+
+        let message = Message::new(&[cancel_ix], Some(&maker.pubkey()));
+        let recent_blockhash = svm.latest_blockhash();
+        let transaction = Transaction::new(&[&maker], message, recent_blockhash);
+
+        let err = svm.send_transaction(transaction).unwrap_err();
+        println!("{:?}", err);
+        let err_str = format!("{:?}", err);
+        assert!(err_str.contains("IllegalOwner"), "{}", err_str);
+    }
 }
