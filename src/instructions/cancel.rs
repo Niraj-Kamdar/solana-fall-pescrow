@@ -8,7 +8,7 @@ use pinocchio_pubkey::derive_address;
 use crate::state::Escrow;
 
 pub fn process_cancel_instruction(accounts: &mut [AccountView], _data: &[u8]) -> ProgramResult {
-    let [maker, mint_a, escrow_account, vault, maker_ata_a, token_program, ..] = accounts else {
+    let [maker, mint_a, escrow_account, vault, maker_ata_a, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -16,7 +16,7 @@ pub fn process_cancel_instruction(accounts: &mut [AccountView], _data: &[u8]) ->
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if escrow_account.owned_by(&crate::ID) {
+    if !escrow_account.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
@@ -41,15 +41,16 @@ pub fn process_cancel_instruction(accounts: &mut [AccountView], _data: &[u8]) ->
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let vault_account = pinocchio_token::state::Account::from_account_view(vault)?;
-    if vault_account.owner().ne(escrow_account.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-    if vault_account.mint().ne(mint_a.address()) {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let vault_balance = vault_account.amount();
+    let vault_balance = {
+        let vault_account = pinocchio_token::state::Account::from_account_view(vault)?;
+        if vault_account.owner().ne(escrow_account.address()) {
+            return Err(ProgramError::IllegalOwner);
+        }
+        if vault_account.mint().ne(mint_a.address()) {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        vault_account.amount()
+    };
 
     let bump_bytes = [bump];
     let seed = [

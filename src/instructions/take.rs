@@ -19,7 +19,7 @@ pub fn process_take_instruction(accounts: &mut [AccountView], _data: &[u8]) -> P
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if escrow_account.owned_by(&crate::ID) {
+    if !escrow_account.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
@@ -51,15 +51,17 @@ pub fn process_take_instruction(accounts: &mut [AccountView], _data: &[u8]) -> P
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let vault_account = pinocchio_token::state::Account::from_account_view(vault)?;
-    if vault_account.owner().ne(escrow_account.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-    if vault_account.mint().ne(mint_a.address()) {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if vault_account.amount() != amount_to_give {
-        return Err(ProgramError::InsufficientFunds);
+    {
+        let vault_account = pinocchio_token::state::Account::from_account_view(vault)?;
+        if vault_account.owner().ne(escrow_account.address()) {
+            return Err(ProgramError::IllegalOwner);
+        }
+        if vault_account.mint().ne(mint_a.address()) {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if vault_account.amount() != amount_to_give {
+            return Err(ProgramError::InsufficientFunds);
+        }
     }
 
     CreateIdempotent {
